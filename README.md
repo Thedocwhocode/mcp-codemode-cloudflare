@@ -15,6 +15,10 @@ Em vez de uma tool por endpoint (centenas de definições no contexto do agente)
 O código do modelo roda num **sandbox sem rede**. A única saída é `codemode.request()`, atendida pelo
 Worker, que valida a chamada, aplica a política e injeta a key. **A key nunca chega ao modelo.**
 
+[![Vídeo de 22 s: 604 tools viram 3](docs/demo.jpg)](docs/demo.mp4)
+
+*Vídeo de 22 s ([`docs/demo.mp4`](docs/demo.mp4)).*
+
 ![Arquitetura](docs/arquitetura.png)
 
 Versão interativa do diagrama (tema claro/escuro, exportação): [`docs/arquitetura.html`](docs/arquitetura.html).
