@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mcp-codemode",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // Só pelo domínio próprio, atrás do Cloudflare Access. Sem workers.dev nem URLs de preview.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "mcp.SEU-DOMINIO.com", "custom_domain": true }],
+  "observability": { "enabled": true },
+  // Access: troque pelos valores da sua aplicação (Zero Trust → Access → Applications).
+  "vars": { "ACCESS_TEAM_DOMAIN": "SEU-TIME.cloudflareaccess.com", "ACCESS_AUD": "COLE-O-AUD-DA-APLICACAO" },
+  // Sandbox do código gerado pelo modelo (Dynamic Workers; exige o plano Workers Paid).
+  "worker_loaders": [{ "binding": "LOADER" }],
+  // Aprovações de operações destrutivas (uso único, 10 min).
+  "durable_objects": { "bindings": [{ "name": "APPROVALS", "class_name": "Approvals" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Approvals"] }],
+  // API privada (atrás de um Cloudflare Tunnel): descomente. API pública: deixe comentado e ajuste API.baseUrl.
+  // "vpc_services": [{ "binding": "UPSTREAM", "service_id": "ID-DO-VPC-SERVICE", "remote": true }],
+  // Uma entrada por projeto de src/config/projects.ts. As keys moram no Secrets Store, nunca no código.
+  "secrets_store_secrets": [
+    { "binding": "KEY_EXEMPLO", "store_id": "00000000000000000000000000000000", "secret_name": "api_key_exemplo" },
+    { "binding": "KEY_LEITURA", "store_id": "00000000000000000000000000000000", "secret_name": "api_key_leitura" }
+  ]
+}

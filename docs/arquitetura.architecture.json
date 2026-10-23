@@ -1,0 +1,280 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "MCP em Code Mode na Cloudflare, protegido pelo Access",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1340,
+      620
+    ]
+  },
+  "components": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "Claude Code",
+      "sublabel": "cliente MCP",
+      "brand": "claude",
+      "pos": [
+        30,
+        270
+      ],
+      "size": [
+        140,
+        68
+      ]
+    },
+    {
+      "id": "access",
+      "type": "security",
+      "label": "Access",
+      "sublabel": "OAuth gerenciado",
+      "brand": "cloudflare",
+      "pos": [
+        205,
+        270
+      ],
+      "size": [
+        140,
+        68
+      ]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Worker MCP",
+      "sublabel": "search · execute · approve",
+      "pos": [
+        380,
+        270
+      ],
+      "size": [
+        150,
+        68
+      ]
+    },
+    {
+      "id": "sandbox",
+      "type": "security",
+      "label": "Dynamic Worker",
+      "sublabel": "sandbox sem rede",
+      "pos": [
+        565,
+        120
+      ],
+      "size": [
+        150,
+        68
+      ]
+    },
+    {
+      "id": "host",
+      "type": "backend",
+      "label": "Callback do host",
+      "sublabel": "política + key",
+      "pos": [
+        565,
+        270
+      ],
+      "size": [
+        150,
+        68
+      ]
+    },
+    {
+      "id": "secrets",
+      "type": "database",
+      "label": "Secrets Store",
+      "sublabel": "uma key por projeto",
+      "pos": [
+        470,
+        440
+      ],
+      "size": [
+        150,
+        68
+      ]
+    },
+    {
+      "id": "approvals",
+      "type": "database",
+      "label": "Durable Object",
+      "sublabel": "aprovações 10 min",
+      "pos": [
+        660,
+        440
+      ],
+      "size": [
+        150,
+        68
+      ]
+    },
+    {
+      "id": "vpc",
+      "type": "cloud",
+      "label": "Workers VPC",
+      "sublabel": "VPC Service",
+      "pos": [
+        790,
+        270
+      ],
+      "size": [
+        140,
+        68
+      ]
+    },
+    {
+      "id": "tunnel",
+      "type": "cloud",
+      "label": "Tunnel",
+      "sublabel": "sem hostname público",
+      "pos": [
+        985,
+        270
+      ],
+      "size": [
+        140,
+        68
+      ]
+    },
+    {
+      "id": "api",
+      "type": "external",
+      "label": "API privada",
+      "sublabel": "ex. Dokploy :3000",
+      "pos": [
+        1180,
+        270
+      ],
+      "size": [
+        140,
+        68
+      ]
+    },
+    {
+      "id": "logs",
+      "type": "cloud",
+      "label": "Workers Logs",
+      "sublabel": "auditoria",
+      "pos": [
+        380,
+        120
+      ],
+      "size": [
+        150,
+        68
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Conta Cloudflare",
+      "wraps": [
+        "access",
+        "worker",
+        "sandbox",
+        "host",
+        "secrets",
+        "approvals",
+        "vpc",
+        "tunnel",
+        "logs"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c-access",
+      "from": "client",
+      "to": "access",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c-worker",
+      "from": "access",
+      "to": "worker",
+      "label": "JWT",
+      "variant": "security"
+    },
+    {
+      "id": "c-sandbox",
+      "from": "worker",
+      "to": "sandbox",
+      "label": "código"
+    },
+    {
+      "id": "c-host",
+      "from": "sandbox",
+      "to": "host",
+      "label": "request()",
+      "labelAt": [
+        690,
+        229
+      ]
+    },
+    {
+      "id": "c-secrets",
+      "from": "host",
+      "to": "secrets",
+      "label": "key",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "c-approvals",
+      "from": "host",
+      "to": "approvals",
+      "label": "destrutiva",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "c-vpc",
+      "from": "host",
+      "to": "vpc",
+      "label": "fetch"
+    },
+    {
+      "id": "c-tunnel",
+      "from": "vpc",
+      "to": "tunnel"
+    },
+    {
+      "id": "c-api",
+      "from": "tunnel",
+      "to": "api",
+      "label": "x-api-key",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c-logs",
+      "from": "worker",
+      "to": "logs",
+      "label": "audit",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "A key nunca chega ao modelo",
+      "items": [
+        "Sandbox sem rede: só codemode.request()",
+        "O host injeta a key do Secrets Store e redige a resposta",
+        "API pública: sem VPC/Tunnel, o host usa fetch direto"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Duas barreiras de identidade",
+      "items": [
+        "Access barra quem não está liberado",
+        "O Worker revalida o JWT e nega por padrão"
+      ]
+    }
+  ]
+}

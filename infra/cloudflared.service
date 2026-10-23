@@ -1,0 +1,20 @@
+# /etc/systemd/system/cloudflared-dokploy.service
+# Tunnel "dokploy-mcp": sem hostname público; só o Workers VPC alcança 127.0.0.1:3000.
+[Unit]
+Description=cloudflared (tunnel dokploy-mcp, Workers VPC)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cloudflared
+ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel run --token-file /etc/cloudflared/dokploy-mcp.token
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
