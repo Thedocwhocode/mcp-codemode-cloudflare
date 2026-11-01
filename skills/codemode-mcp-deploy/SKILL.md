@@ -34,6 +34,7 @@ Your job is to take the user from a fresh checkout to a working `claude mcp add`
 
   RPC and REST APIs both work without touching the rest of `src/`.
 - **Fail closed.** When you are unsure how to classify an operation, use `destructive`.
+- **Use the repository's tools.** Run `npm ci` once. `npx wrangler` then runs the wrangler version pinned in `package-lock.json`, not whatever is newest.
 
 ## Stage 1: Gather the inputs
 

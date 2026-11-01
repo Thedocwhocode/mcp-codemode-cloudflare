@@ -1,9 +1,9 @@
 // Valida e empacota as skills de skills/<nome>/ (formato Agent Skills: SKILL.md + arquivos de apoio).
 // Uso: node scripts/skills.mjs check   → valida frontmatter, links, tipos de arquivo e ausência de segredos
-//      node scripts/skills.mjs pack    → valida e gera dist/skills/<nome>.zip (pasta <nome>/ na raiz do zip)
+//      node scripts/skills.mjs pack    → valida e gera dist/skills/<nome>.zip (pasta <nome>/ na raiz do zip; usa o comando zip)
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 const ROOT = 'skills';
 const OUT = 'dist/skills';
@@ -38,7 +38,8 @@ function check(name) {
   else {
     if (fm.name !== name) errors.push(`name "${fm.name}" difere da pasta "${name}"`);
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(fm.name ?? '') || fm.name.length > 64) errors.push('name: minúsculas, dígitos e hífens, até 64');
-    if (!fm.description) errors.push('description vazia');
+    // O parser aqui é de uma linha por campo: valores YAML nulos ou em bloco não passam.
+    if (!fm.description || /^(null|~|[|>][+-]?)$/i.test(fm.description)) errors.push('description vazia, nula ou em bloco (use uma linha)');
     else if (fm.description.length > 1024) errors.push(`description com ${fm.description.length} caracteres (máx. 1024)`);
   }
   let total = 0;
@@ -54,7 +55,8 @@ function check(name) {
       for (const [, target] of body.matchAll(/\]\(([^)#\s]+)\)/g)) {
         if (/^[a-z]+:/i.test(target)) continue;
         const abs = resolve(dirname(file), target);
-        if (!abs.startsWith(resolve(dir))) errors.push(`${rel}: link sai da skill (${target})`);
+        const inside = relative(resolve(dir), abs);
+        if (inside.startsWith('..') || isAbsolute(inside)) errors.push(`${rel}: link sai da skill (${target})`);
         else if (!existsSync(abs)) errors.push(`${rel}: link quebrado (${target})`);
       }
     }
@@ -81,7 +83,15 @@ if (cmd === 'pack') {
   for (const name of names) {
     const zip = resolve(OUT, `${name}.zip`);
     // -X: sem atributos extras; -r: recursivo; roda dentro de skills/ para a pasta ficar na raiz do zip.
-    execFileSync('zip', ['-X', '-q', '-r', zip, name], { cwd: ROOT });
+    try {
+      execFileSync('zip', ['-X', '-q', '-r', zip, name], { cwd: ROOT });
+    } catch (e) {
+      if (e.code === 'ENOENT') {
+        console.error('o comando "zip" não está instalado (Debian/Ubuntu: apt install zip; macOS já tem)');
+        process.exit(1);
+      }
+      throw e;
+    }
     console.log(`${relative('.', zip)} (${statSync(zip).size} bytes)`);
   }
 }

@@ -12,7 +12,6 @@ interface Route {
   method: string;
   cls: OpClass;
   params: number;
-  segments: number;
   re: RegExp;
 }
 
@@ -28,15 +27,22 @@ export function compilePolicy(policy: PolicyTable): (method: string, path: strin
       // "read" passa até em projeto readonly: só vale para GET/HEAD, mesmo que a tabela diga outra coisa.
       cls: cls === 'read' && method !== 'GET' && method !== 'HEAD' ? 'destructive' : cls,
       params: (template.match(/\{[^/}]+\}/g) ?? []).length,
-      segments: template.split('/').length,
       // Um {param} casa um segmento inteiro, nunca "/" (o validatePath já recusa ".." e "%2f").
       re: new RegExp(`^${esc(template).replace(/\{[^/}]+\}/g, '[^/]+')}$`),
     });
   }
-  // Mais específico primeiro: menos {params} vence ("/apps/search" antes de "/apps/{id}").
-  routes.sort((a, b) => a.params - b.params || b.segments - a.segments);
-  // Fora da tabela, ou método sem entrada para aquele path = destructive: fail-closed.
-  return (method, path) => routes.find((r) => r.method === method.toUpperCase() && r.re.test(path))?.cls ?? 'destructive';
+  const severity: Record<OpClass, number> = { read: 0, write: 1, destructive: 2 };
+  // Mais específico vence: menos {params} ("/apps/search" antes de "/apps/{id}").
+  // Empate entre templates diferentes que casam o mesmo path: vence a classe mais restritiva (fail-closed).
+  return (method, path) => {
+    const m = method.toUpperCase();
+    const hits = routes.filter((r) => r.method === m && r.re.test(path));
+    if (hits.length === 0) return 'destructive'; // fora da tabela = destructive
+    const fewest = Math.min(...hits.map((r) => r.params));
+    return hits
+      .filter((r) => r.params === fewest)
+      .reduce<OpClass>((worst, r) => (severity[r.cls] > severity[worst] ? r.cls : worst), 'read');
+  };
 }
 
 export const classify = compilePolicy(table as PolicyTable);

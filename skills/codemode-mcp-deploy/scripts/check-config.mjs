@@ -168,6 +168,13 @@ if (specSrc && tableSrc) {
     } else ok('every spec path matches API.pathPattern');
   }
 }
+if (pathPattern) {
+  // A pattern that accepts every spec path can still be too broad. These must always be refused.
+  const probes = ['/../admin', '/a/../b', '//evil.example/x', 'http://evil.example/x', '/a?x=1', '/a%2fb', '/a%2Fb', '/a#b', 'a/b', '/a b', ''];
+  const accepted = probes.filter((p) => pathPattern.test(p));
+  if (accepted.length) fail(`API.pathPattern accepts unsafe paths: ${accepted.map((p) => JSON.stringify(p)).join(', ')}`);
+  else ok('API.pathPattern refuses traversal, hosts, queries and encoded slashes');
+}
 
 // 4. Secret hygiene
 const gitignore = existsSync(join(root, '.gitignore')) ? readFileSync(join(root, '.gitignore'), 'utf8') : '';

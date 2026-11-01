@@ -190,6 +190,7 @@ agentes leem. O texto delas está em inglês, para valer em qualquer marketplace
 Instalar no Claude Code (todas as sessões do usuário):
 
 ```bash
+mkdir -p ~/.claude/skills
 cp -r skills/codemode-mcp skills/codemode-mcp-deploy ~/.claude/skills/
 ```
 
@@ -197,7 +198,7 @@ Validar e gerar os `.zip` (pasta da skill na raiz do zip, como pedem os marketpl
 
 ```bash
 npm run skills:check   # frontmatter, links, tipos de arquivo, nada parecido com credencial
-npm run skills:pack    # gera dist/skills/<nome>.zip
+npm run skills:pack    # gera dist/skills/<nome>.zip (precisa do comando zip)
 ```
 
 O verificador da skill de implantação também confere a config para APIs REST: métodos que o spec usa,

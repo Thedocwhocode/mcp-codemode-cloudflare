@@ -45,10 +45,11 @@ Never guess a path. Return a short list, not the spec. The spec can have hundred
 ```js
 async () => {
   const spec = await codemode.spec();
+  const HTTP = ["get", "head", "post", "put", "patch", "delete"]; // a path item can also hold "parameters", "summary"…
   const hits = [];
   for (const [path, ops] of Object.entries(spec.paths)) {
     if (!/deploy/i.test(path)) continue;
-    for (const [method, op] of Object.entries(ops)) {
+    for (const [method, op] of Object.entries(ops).filter(([m]) => HTTP.includes(m))) {
       hits.push({
         method: method.toUpperCase(),
         path,
@@ -68,9 +69,12 @@ More search patterns are in [references/patterns.md](references/patterns.md).
 
 Write one `async () => { ... }` that makes the calls, joins the data and returns only the answer. Filtering in code costs nothing. Filtering in your context costs tokens and can lose data to truncation.
 
+In the examples, `PROJECT` stands for an alias you found in step 1. Replace it with the real one.
+
 ```js
 async () => {
-  const projects = await codemode.request({ project: "example", method: "GET", path: "/project.all" });
+  const PROJECT = "exemplo"; // an alias from spec["x-projects"]
+  const projects = await codemode.request({ project: PROJECT, method: "GET", path: "/project.all" });
   return projects.flatMap((p) =>
     p.environments.flatMap((e) =>
       e.applications.map((a) => ({ project: p.name, env: e.name, app: a.name, id: a.applicationId, status: a.applicationStatus })),

@@ -68,6 +68,17 @@ describe('compilePolicy (REST)', () => {
     expect(rest('GET', '/apps/')).toBe('destructive');
   });
   it('"read" fora de GET/HEAD vira destructive', () => expect(rest('POST', '/apps/42/sneaky')).toBe('destructive'));
+  it('template mais específico vence o genérico', () => {
+    const t = compilePolicy({ 'GET /apps/{id}/{section}': 'read', 'GET /apps/{id}/keys': 'destructive' });
+    expect(t('GET', '/apps/42/keys')).toBe('destructive');
+    expect(t('GET', '/apps/42/logs')).toBe('read');
+  });
+  it('empate entre templates fica com a classe mais restritiva', () => {
+    const t = compilePolicy({ 'GET /apps/{id}/keys': 'destructive', 'GET /{kind}/42/keys': 'read' });
+    expect(t('GET', '/apps/42/keys')).toBe('destructive');
+    const u = compilePolicy({ 'GET /{kind}/42/keys': 'read', 'GET /apps/{id}/keys': 'write' });
+    expect(u('GET', '/apps/42/keys')).toBe('write');
+  });
   it('chave fora do formato "MÉTODO /path" quebra no carregamento', () => {
     expect(() => compilePolicy({ '/apps': 'read' })).toThrow(/chave de política inválida/);
   });
