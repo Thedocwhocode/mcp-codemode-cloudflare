@@ -8,7 +8,9 @@
     "spec:trim": "node scripts/trim-spec.mjs",
     "spec:classify": "node scripts/classify.mjs",
     "deploy": "wrangler deploy",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "skills:check": "node scripts/skills.mjs check",
+    "skills:pack": "node scripts/skills.mjs pack"
   },
   "keywords": [],
   "type": "module",

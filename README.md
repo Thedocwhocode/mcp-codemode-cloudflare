@@ -168,6 +168,35 @@ claude mcp login minha-api      # abre o login do Access no navegador
 
 Depois peça, por exemplo: *"use o minha-api e liste os apps do projeto exemplo"*.
 
+## Skills para agentes
+
+As tools dizem **o que** o agente pode chamar. As skills de [`skills/`](skills/) dizem **quando e como** chamar.
+Estão no formato Agent Skills (`SKILL.md` + arquivos de apoio), que o Claude Code, o Cursor, o Copilot e outros
+agentes leem. O texto delas está em inglês, para valer em qualquer marketplace.
+
+| Skill | Para quê |
+|---|---|
+| [`codemode-mcp`](skills/codemode-mcp/SKILL.md) | usar o servidor: achar o projeto em `x-projects`, buscar no spec antes de chamar, fazer o trabalho num `execute` só, parar e pedir aprovação em operação destrutiva, ler as mensagens de erro |
+| [`codemode-mcp-deploy`](skills/codemode-mcp-deploy/SKILL.md) | montar e publicar o servidor para outra API, em etapas com confirmação, sem tocar em key; traz um verificador de config (`scripts/check-config.mjs`, só lê arquivos locais) e o roteiro para APIs REST |
+
+Instalar no Claude Code (todas as sessões do usuário):
+
+```bash
+cp -r skills/codemode-mcp skills/codemode-mcp-deploy ~/.claude/skills/
+```
+
+Validar e gerar os `.zip` (pasta da skill na raiz do zip, como pedem os marketplaces):
+
+```bash
+npm run skills:check   # frontmatter, links, tipos de arquivo, nada parecido com credencial
+npm run skills:pack    # gera dist/skills/<nome>.zip
+```
+
+> **API REST.** A política vem pronta para APIs no estilo do Dokploy (um método por path, sem `{id}` no path).
+> Numa API REST, sem adaptar, tudo cai em `destructive` (fail-closed: seguro, mas inutilizável).
+> O verificador acusa o caso e o roteiro está em
+> [`skills/codemode-mcp-deploy/references/rest-apis.md`](skills/codemode-mcp-deploy/references/rest-apis.md).
+
 ## Como funciona uma chamada
 
 1. O Claude Code chama `execute` com um trecho de JavaScript.
@@ -187,7 +216,8 @@ Depois peça, por exemplo: *"use o minha-api e liste os apps do projeto exemplo"
 | `src/upstream/client.ts` | validação, limites, chamada à API, redação |
 | `src/policy/` | classificação, política e aprovações (Durable Object) |
 | `src/index.ts` | servidor MCP (`openApiMcpServer` + `approve`) e auditoria |
-| `scripts/` | `trim-spec`, `classify` e `smoke` (testa o MCP contra `wrangler dev --remote`) |
+| `scripts/` | `trim-spec`, `classify`, `smoke` (testa o MCP contra `wrangler dev --remote`) e `skills` (valida e empacota) |
+| `skills/` | skills de agente: uso do servidor e implantação |
 | `docs/` | diagrama de arquitetura (feito com archify) |
 
 ## Limites conhecidos
