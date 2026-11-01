@@ -4,6 +4,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { parseFrontmatter } from './frontmatter.mjs';
 
 const ROOT = 'skills';
 const OUT = 'dist/skills';
@@ -16,30 +17,21 @@ const RISKY = /(curl[^\n|]*\|\s*(ba|z)?sh|rm\s+-rf\s+[/~]|eval\(atob|process\.en
 const files = (dir) =>
   readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? files(join(dir, f)) : [join(dir, f)]));
 
-function frontmatter(text) {
-  const m = text.match(/^---\n([\s\S]*?)\n---\n/);
-  if (!m) return null;
-  const fields = {};
-  for (const line of m[1].split('\n')) {
-    const kv = line.match(/^([a-z-]+):\s*(.*)$/);
-    if (kv) fields[kv[1]] = kv[2].replace(/^["']|["']$/g, '');
-  }
-  return fields;
-}
-
 function check(name) {
   const dir = join(ROOT, name);
   const errors = [];
   const skillFile = join(dir, 'SKILL.md');
   if (!existsSync(skillFile)) return [`${name}: falta SKILL.md`];
   const text = readFileSync(skillFile, 'utf8');
-  const fm = frontmatter(text);
-  if (!fm) errors.push('SKILL.md sem frontmatter (--- … ---)');
+  const parsed = parseFrontmatter(text);
+  const fm = parsed?.fields;
+  if (!parsed) errors.push('SKILL.md sem frontmatter (--- … ---)');
   else {
+    errors.push(...parsed.errors.map((e) => `frontmatter ${e}`));
     if (fm.name !== name) errors.push(`name "${fm.name}" difere da pasta "${name}"`);
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(fm.name ?? '') || fm.name.length > 64) errors.push('name: minúsculas, dígitos e hífens, até 64');
-    // O parser aqui é de uma linha por campo: valores YAML nulos ou em bloco não passam.
-    if (!fm.description || /^(null|~|[|>][+-]?)$/i.test(fm.description)) errors.push('description vazia, nula ou em bloco (use uma linha)');
+    // parseFrontmatter só devolve strings; um valor que o YAML leria como outro tipo já virou erro acima.
+    if (!fm.description) errors.push('description ausente ou inválida (uma linha de texto)');
     else if (fm.description.length > 1024) errors.push(`description com ${fm.description.length} caracteres (máx. 1024)`);
   }
   let total = 0;
