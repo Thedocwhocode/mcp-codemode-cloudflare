@@ -4,3 +4,4 @@ node_modules/
 *.token
 spec/raw.json
 brag-output/
+dist/

@@ -84,9 +84,9 @@ npm install
 | Campo | Exemplo (Dokploy) | Para que serve |
 |---|---|---|
 | `baseUrl` | `http://127.0.0.1/api` | origem das chamadas; API pública: `https://api.exemplo.com/v1` |
-| `authHeader` | `x-api-key` | header onde o Worker injeta a key (`Authorization: Bearer …` exige ajuste no `client.ts`) |
-| `methods` | `GET`, `POST` | métodos aceitos |
-| `pathPattern` / `pathExample` | `/^\/router\.procedure$/` | paths aceitos; recusa host, `..` e query no path |
+| `authHeader` / `authPrefix` | `x-api-key` / `''` | header onde o Worker injeta a key; para `Authorization: Bearer …`, use `authorization` / `'Bearer '` |
+| `methods` | `GET`, `POST` | métodos aceitos (REST: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`) |
+| `pathPattern` / `pathExample` | `PATH_PATTERNS.rpc` / `/project.all` | paths aceitos; `PATH_PATTERNS.rest` para REST (`/apps/123`). Os dois recusam host, `..`, `//`, query e `%2f` |
 | `sensitiveFields` | `env`, `password`, `*token*`… | campos da resposta trocados por `[REDACTED]` antes de chegar ao modelo |
 | `help` | — | texto que o modelo lê na descrição do `execute` |
 
@@ -96,14 +96,22 @@ npm install
 
 ```bash
 # salve o OpenAPI bruto da sua API em spec/raw.json (fora do git), depois:
-npm run spec:trim       # gera spec/openapi.json enxuto (sem respostas e erros genéricos)
-npm run spec:classify   # gera policy/classification.json: operação → read | write | destructive
+npm run spec:trim       # gera spec/openapi.json enxuto (sem respostas; mantém os components que o $ref usa)
+npm run spec:classify   # gera policy/classification.json: "MÉTODO /path" → read | write | destructive
 ```
 
-Revise o `policy/classification.json` no diff. A regra fica em `scripts/classify.mjs`: verbos como
-`remove`, `delete`, `stop`, `kill`, `clean`, `rollback` viram `destructive`. **Operação fora da tabela é tratada
-como destrutiva** (fail-closed). Os dois scripts foram escritos para o OpenAPI do Dokploy; para outra API,
-ajuste os filtros deles.
+Revise o `policy/classification.json` no diff. As regras ficam em `scripts/policy-rules.mjs` e valem para os dois
+formatos de API:
+
+- **RPC** (Dokploy, `/<router>.<procedure>`): verbos como `remove`, `delete`, `stop`, `kill`, `clean`, `rollback` viram
+  `destructive`, assim como os routers de infraestrutura e de credenciais.
+- **REST** (`/apps/{id}`, vários métodos por path): `DELETE`, ações como `cancel`, `revoke`, `rotate`, `refund`, e
+  qualquer escrita em usuários, papéis, billing, keys, tokens, webhooks ou settings viram `destructive`. `GET` em
+  segredos, env ou arquivos também.
+
+A chave da tabela é `"MÉTODO /template"`. Em tempo de execução, o path concreto (`/apps/42`) casa com o template
+(`/apps/{id}`) e o mais específico vence (`/apps/search` antes de `/apps/{id}`). **Operação fora da tabela é tratada
+como destrutiva** (fail-closed), e `read` só vale para `GET`/`HEAD`, mesmo que a tabela diga outra coisa.
 
 ### 3. Projetos e keys — `src/config/projects.ts` + Secrets Store
 
@@ -154,7 +162,7 @@ direto, o que serve para API pública.
 ### 6. Testar e publicar
 
 ```bash
-npm run typecheck && npm test   # 38 testes: path, roteamento de key, fail-closed, aprovação, key nunca vaza
+npm run typecheck && npm test   # 79 testes: path, política RPC e REST, roteamento de key, fail-closed, aprovação, key nunca vaza
 npm run deploy
 curl -i https://mcp.seu-dominio.com/mcp   # sem login: 401 do Access, com o endereço do OAuth
 ```
@@ -167,6 +175,35 @@ claude mcp login minha-api      # abre o login do Access no navegador
 ```
 
 Depois peça, por exemplo: *"use o minha-api e liste os apps do projeto exemplo"*.
+
+## Skills para agentes
+
+As tools dizem **o que** o agente pode chamar. As skills de [`skills/`](skills/) dizem **quando e como** chamar.
+Estão no formato Agent Skills (`SKILL.md` + arquivos de apoio), que o Claude Code, o Cursor, o Copilot e outros
+agentes leem. O texto delas está em inglês, para valer em qualquer marketplace.
+
+| Skill | Para quê |
+|---|---|
+| [`codemode-mcp`](skills/codemode-mcp/SKILL.md) | usar o servidor: achar o projeto em `x-projects`, buscar no spec antes de chamar, fazer o trabalho num `execute` só, parar e pedir aprovação em operação destrutiva, ler as mensagens de erro |
+| [`codemode-mcp-deploy`](skills/codemode-mcp-deploy/SKILL.md) | montar e publicar o servidor para outra API, em etapas com confirmação, sem tocar em key; traz um verificador de config (`scripts/check-config.mjs`, só lê arquivos locais) e o guia de APIs REST |
+
+Instalar no Claude Code (todas as sessões do usuário):
+
+```bash
+mkdir -p ~/.claude/skills
+cp -r skills/codemode-mcp skills/codemode-mcp-deploy ~/.claude/skills/
+```
+
+Validar e gerar os `.zip` (pasta da skill na raiz do zip, como pedem os marketplaces):
+
+```bash
+npm run skills:check   # frontmatter, links, tipos de arquivo, nada parecido com credencial
+npm run skills:pack    # gera dist/skills/<nome>.zip (precisa do comando zip)
+```
+
+O verificador da skill de implantação também confere a config para APIs REST: métodos que o spec usa,
+`pathPattern`, `authPrefix` e o formato da tabela. Detalhes em
+[`skills/codemode-mcp-deploy/references/rest-apis.md`](skills/codemode-mcp-deploy/references/rest-apis.md).
 
 ## Como funciona uma chamada
 
@@ -187,7 +224,8 @@ Depois peça, por exemplo: *"use o minha-api e liste os apps do projeto exemplo"
 | `src/upstream/client.ts` | validação, limites, chamada à API, redação |
 | `src/policy/` | classificação, política e aprovações (Durable Object) |
 | `src/index.ts` | servidor MCP (`openApiMcpServer` + `approve`) e auditoria |
-| `scripts/` | `trim-spec`, `classify` e `smoke` (testa o MCP contra `wrangler dev --remote`) |
+| `scripts/` | `trim-spec`, `classify` + `policy-rules`, `smoke` (testa o MCP contra `wrangler dev --remote`) e `skills` (valida e empacota) |
+| `skills/` | skills de agente: uso do servidor e implantação |
 | `docs/` | diagrama de arquitetura (feito com archify) |
 
 ## Limites conhecidos
