@@ -100,16 +100,31 @@ if (wrangler) {
 const apiSrc = read('src/config/api.ts');
 const specSrc = read('spec/openapi.json');
 const tableSrc = read('policy/classification.json');
+const regexFrom = (text) => {
+  const m = text?.match(/^\/(.+)\/([a-z]*)$/);
+  return m ? new RegExp(m[1], m[2]) : null;
+};
 let pathPattern = null;
+let methods = null;
 if (apiSrc) {
-  const m = apiSrc.match(/pathPattern:\s*\/(.+)\/([a-z]*),/);
-  if (m) {
-    try {
-      pathPattern = new RegExp(m[1], m[2]);
-    } catch {
-      warn('could not evaluate API.pathPattern; skipped the path check');
-    }
+  try {
+    // pathPattern is either a literal regex or PATH_PATTERNS.<name>.
+    const literal = apiSrc.match(/pathPattern:\s*(\/.+\/[a-z]*),/)?.[1];
+    const named = apiSrc.match(/pathPattern:\s*PATH_PATTERNS\.(\w+)/)?.[1];
+    const namedSrc = named && apiSrc.match(new RegExp(`\\b${named}:\\s*(\\/.+\\/[a-z]*),`))?.[1];
+    pathPattern = regexFrom(literal ?? namedSrc);
+    if (!pathPattern) warn('could not read API.pathPattern; skipped the path check');
+    else ok(`API.pathPattern: ${named ? `PATH_PATTERNS.${named}` : 'custom regex'}`);
+  } catch {
+    warn('could not evaluate API.pathPattern; skipped the path check');
   }
+  methods = apiSrc.match(/methods:\s*\[([^\]]*)\]/)?.[1]?.match(/[A-Z]+/g) ?? null;
+  const header = apiSrc.match(/authHeader:\s*['"]([^'"]+)['"]/)?.[1];
+  const prefix = apiSrc.match(/authPrefix:\s*['"]([^'"]*)['"]/)?.[1];
+  if (header && /^authorization$/i.test(header) && !prefix) {
+    warn('authHeader is Authorization but authPrefix is empty: most APIs expect authPrefix "Bearer " (with the space)');
+  }
+  if (prefix && !prefix.endsWith(' ')) warn(`authPrefix "${prefix}" has no trailing space; the header would read "${prefix}<key>"`);
   const base = apiSrc.match(/baseUrl:\s*['"]([^'"]+)['"]/)?.[1];
   const usesVpc = wrangler && (wrangler.vpc_services ?? []).some((v) => v.binding === 'UPSTREAM');
   if (base && /127\.0\.0\.1|localhost/.test(base) && wrangler && !usesVpc) {
@@ -120,46 +135,37 @@ if (specSrc && tableSrc) {
   const spec = JSON.parse(specSrc);
   const table = JSON.parse(tableSrc);
   const paths = Object.keys(spec.paths ?? {});
+  const HTTP = ['get', 'head', 'post', 'put', 'patch', 'delete'];
+  const specKeys = paths.flatMap((p) => Object.keys(spec.paths[p]).filter((m) => HTTP.includes(m)).map((m) => `${m.toUpperCase()} ${p}`));
   const counts = Object.values(table).reduce((a, c) => ({ ...a, [c]: (a[c] ?? 0) + 1 }), {});
-  ok(`spec "${spec.info?.title ?? '?'}": ${paths.length} paths; policy: ${JSON.stringify(counts)}`);
+  ok(`spec "${spec.info?.title ?? '?'}": ${paths.length} paths, ${specKeys.length} operations; policy: ${JSON.stringify(counts)}`);
 
-  const HTTP = ['get', 'post', 'put', 'patch', 'delete', 'head'];
-  // Two table layouts: stock ("/path") or REST-adapted ("METHOD /template", see references/rest-apis.md).
-  const restKeyed = Object.keys(table).some((k) => /^[A-Z]+ \//.test(k));
-  const specKeys = paths.flatMap((p) =>
-    restKeyed ? Object.keys(spec.paths[p]).filter((m) => HTTP.includes(m)).map((m) => `${m.toUpperCase()} ${p}`) : [p],
-  );
-  const missing = specKeys.filter((k) => !(k in table));
-  const stale = Object.keys(table).filter((k) => !specKeys.includes(k));
-  if (missing.length) warn(`${missing.length} spec operations have no class and will be treated as destructive, e.g. ${missing.slice(0, 3).join(', ')}`);
-  if (stale.length) warn(`${stale.length} policy entries are not in the spec (stale), e.g. ${stale.slice(0, 3).join(', ')}`);
-
-  const multi = paths.filter((p) => Object.keys(spec.paths[p]).length > 1);
-  const templated = paths.filter((p) => p.includes('{'));
-  if (restKeyed) {
-    ok('policy is keyed by "METHOD /template" (REST layout); make sure src/policy/classify.ts matches templates');
-    const bad = specKeys.filter((k) => table[k] === 'read' && !/^(GET|HEAD) /.test(k));
-    if (bad.length) warn(`${bad.length} non-GET operations are classed as read, e.g. ${bad.slice(0, 3).join(', ')}`);
+  const oldKeys = Object.keys(table).filter((k) => !/^[A-Z]+ \//.test(k));
+  if (oldKeys.length) {
+    // The server refuses to start with these keys (compilePolicy throws).
+    fail(`policy/classification.json uses the old "/path" keys (e.g. ${oldKeys[0]}). Run: npm run spec:classify`);
   } else {
-    if (multi.length || templated.length) {
-      fail(
-        `REST-shaped spec: ${multi.length} paths with several methods, ${templated.length} with {params}. ` +
-          'The stock policy is keyed by exact path with one method each. See references/rest-apis.md before deploying.',
-      );
-    }
-    const mismatch = paths.filter((p) => {
-      const method = Object.keys(spec.paths[p])[0]?.toUpperCase();
-      // GET marked destructive is fine (sensitive read). read on non-GET or write on GET is not.
-      return (table[p] === 'read' && method !== 'GET') || (table[p] === 'write' && method === 'GET');
-    });
-    if (mismatch.length) warn(`${mismatch.length} entries disagree with the spec method and will act as destructive, e.g. ${mismatch.slice(0, 3).join(', ')}`);
+    const missing = specKeys.filter((k) => !(k in table));
+    const stale = Object.keys(table).filter((k) => !specKeys.includes(k));
+    if (missing.length) warn(`${missing.length} spec operations have no class and will be treated as destructive, e.g. ${missing.slice(0, 3).join(', ')}`);
+    if (stale.length) warn(`${stale.length} policy entries are not in the spec (stale), e.g. ${stale.slice(0, 3).join(', ')}`);
+    const fakeRead = Object.keys(table).filter((k) => table[k] === 'read' && !/^(GET|HEAD) /.test(k));
+    if (fakeRead.length) warn(`${fakeRead.length} non-GET entries say read; the server treats them as destructive, e.g. ${fakeRead.slice(0, 3).join(', ')}`);
+  }
+
+  if (methods) {
+    const used = [...new Set(specKeys.map((k) => k.split(' ')[0]))];
+    const blocked = used.filter((m) => !methods.includes(m));
+    if (blocked.length) warn(`the spec uses ${blocked.join(', ')} but API.methods allows only ${methods.join(', ')}`);
   }
 
   if (pathPattern) {
     // Fill {params} with a sample value: the pattern sees concrete paths at runtime.
     const rejected = paths.filter((p) => !pathPattern.test(p.replace(/\{[^/}]+\}/g, '1')));
-    if (rejected.length) fail(`${rejected.length} spec paths fail API.pathPattern, e.g. ${rejected.slice(0, 3).join(', ')}`);
-    else ok('every spec path matches API.pathPattern');
+    if (rejected.length) {
+      const hint = rejected.some((p) => p.includes('{')) ? ' (REST paths need pathPattern: PATH_PATTERNS.rest)' : '';
+      fail(`${rejected.length} spec paths fail API.pathPattern, e.g. ${rejected.slice(0, 3).join(', ')}${hint}`);
+    } else ok('every spec path matches API.pathPattern');
   }
 }
 

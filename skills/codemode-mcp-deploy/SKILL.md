@@ -30,9 +30,9 @@ Your job is to take the user from a fresh checkout to a working `claude mcp add`
   - `wrangler.jsonc`
   - `spec/openapi.json`
   - `policy/classification.json`
-  - the two scripts in `scripts/`, when adapting to a new API
+  - `scripts/policy-rules.mjs`, when the classification rules need to change
 
-  Touch `src/` beyond `config/` only for the REST adaptation described in [references/rest-apis.md](references/rest-apis.md).
+  RPC and REST APIs both work without touching the rest of `src/`.
 - **Fail closed.** When you are unsure how to classify an operation, use `destructive`.
 
 ## Stage 1: Gather the inputs
@@ -54,19 +54,18 @@ Set these fields:
 | `name` | Short API name. It shows up in the audit log |
 | `baseUrl` | The real origin for a public API. For a private API, the local origin (for example `http://127.0.0.1:3000/api`) |
 | `authHeader` | The header name |
+| `authPrefix` | `'Bearer '` (with the space) for `Authorization: Bearer <key>`; `''` for a bare key |
 | `methods` | The HTTP methods the spec uses |
-| `pathPattern` | A regex that matches every spec path and nothing with a host, `..` or `?` |
-| `pathExample` | One real path |
+| `pathPattern` | `PATH_PATTERNS.rpc` for `/<router>.<procedure>` paths, `PATH_PATTERNS.rest` for REST (`/apps/{id}`) |
+| `pathExample` | One real path, such as `/apps/123` |
 | `sensitiveFields` | Response fields to mask. Keep the defaults and add the API's own names |
 | `help` | Two or three lines on call conventions and the shape of the main list endpoint |
-
-If the API wants `Authorization: Bearer <key>`, the header value needs a prefix. Change the `headers` line in `src/upstream/client.ts` to send `` `Bearer ${key}` ``, and add a unit test for it in `test/client.test.ts`.
 
 ## Stage 3: Spec and policy
 
 1. Save the raw spec as `spec/raw.json`. Git ignores it.
 2. Run `npm run spec:trim`, then `npm run spec:classify`.
-3. Both scripts were written for Dokploy (tRPC: one method per path, no path parameters). Before you trust their output on another API, read [references/rest-apis.md](references/rest-apis.md).
+3. For a REST API, read [references/rest-apis.md](references/rest-apis.md). It covers the classification rules and what to review.
 4. Show the user the counts and a sample of each class from `policy/classification.json`. Ask them to look at the `write` list in particular. Anything that deletes, stops, rotates credentials, changes permissions, spends money or sends messages must be `destructive`.
 
 ## Stage 4: Projects and keys

@@ -62,7 +62,7 @@ export async function callUpstream(env: UpstreamEnv, project: Project, opts: Pro
   if (!key) throw new RequestError('key do projeto não configurada');
   const init: RequestInit = {
     method: opts.method,
-    headers: { [API.authHeader]: key, accept: 'application/json', ...(opts.body !== undefined && { 'content-type': 'application/json' }) },
+    headers: { [API.authHeader]: `${API.authPrefix}${key}`, accept: 'application/json', ...(opts.body !== undefined && { 'content-type': 'application/json' }) },
     body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
     signal: AbortSignal.timeout(LIMITS.timeoutMs),
   };

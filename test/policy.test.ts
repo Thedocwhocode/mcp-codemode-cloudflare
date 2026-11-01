@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { classify, decide } from '../src/policy/classify';
+import { classifyOperation } from '../scripts/policy-rules.mjs';
+import { classify, compilePolicy, decide } from '../src/policy/classify';
 
 describe('classify', () => {
   it.each([
@@ -31,4 +32,62 @@ describe('decide', () => {
     expect(decide('readwrite', 'write')).toBe('allow');
     expect(decide('readwrite', 'destructive')).toBe('approval');
   });
+});
+
+describe('compilePolicy (REST)', () => {
+  const rest = compilePolicy({
+    'GET /apps': 'read',
+    'POST /apps': 'write',
+    'GET /apps/search': 'read',
+    'GET /apps/{id}': 'read',
+    'PATCH /apps/{id}': 'write',
+    'DELETE /apps/{id}': 'destructive',
+    'POST /apps/{id}/deploy': 'write',
+    'POST /apps/{id}/{action}': 'destructive',
+    'POST /apps/{id}/sneaky': 'read',
+  });
+
+  it.each([
+    ['GET', '/apps', 'read'],
+    ['POST', '/apps', 'write'],
+    ['GET', '/apps/42', 'read'],
+    ['PATCH', '/apps/42', 'write'],
+    ['DELETE', '/apps/42', 'destructive'],
+    ['POST', '/apps/42/deploy', 'write'],
+    ['POST', '/apps/42/restart', 'destructive'],
+    ['get', '/apps/42', 'read'],
+  ])('%s %s → %s', (method, path, cls) => expect(rest(method, path)).toBe(cls));
+
+  it('literal vence template', () => {
+    expect(rest('GET', '/apps/search')).toBe('read');
+    expect(rest('DELETE', '/apps/search')).toBe('destructive');
+  });
+  it('método sem entrada para o path é destructive', () => expect(rest('PUT', '/apps/42')).toBe('destructive'));
+  it('{param} casa um segmento só', () => {
+    expect(rest('GET', '/apps/42/extra')).toBe('destructive');
+    expect(rest('GET', '/apps/')).toBe('destructive');
+  });
+  it('"read" fora de GET/HEAD vira destructive', () => expect(rest('POST', '/apps/42/sneaky')).toBe('destructive'));
+  it('chave fora do formato "MÉTODO /path" quebra no carregamento', () => {
+    expect(() => compilePolicy({ '/apps': 'read' })).toThrow(/chave de política inválida/);
+  });
+});
+
+describe('regras do gerador (scripts/policy-rules.mjs)', () => {
+  it.each([
+    ['/apps', 'get', 'read'],
+    ['/apps/{id}', 'head', 'read'],
+    ['/apps', 'post', 'write'],
+    ['/apps/{id}', 'put', 'write'],
+    ['/apps/{id}', 'delete', 'destructive'],
+    ['/apps/{id}/cancel', 'post', 'destructive'],
+    ['/subscriptions/{id}', 'patch', 'destructive'],
+    ['/orgs/{org}/members', 'post', 'destructive'],
+    ['/projects/{id}/api-keys', 'post', 'destructive'],
+    ['/projects/{id}/secrets', 'get', 'destructive'],
+    ['/apps/{id}/env', 'get', 'destructive'],
+    ['/application.deploy', 'post', 'write'],
+    ['/application.delete', 'post', 'destructive'],
+    ['/docker.readContainerFile', 'get', 'destructive'],
+  ])('%s %s → %s', (path, method, cls) => expect(classifyOperation(path, method)).toBe(cls));
 });
